@@ -1,0 +1,31 @@
+Data Center
+  Cluster
+    Rack
+      Node/Server
+
+Cloud: more focus on different customized service
+
+
+Distributed File System 
+1. use file system interfaces to manage your data(files and directories)
+2. Data is distributed in many machines
+3. Examples: GFS(Google FileSystem), HDFS(Hadoop Distributed FileSystem), Ceph FS, GlusterFS, MapR FS
+4. When to use a DFS?
+    1). data is large scale
+    2). for many users
+    3). analyzed by data's model or property to decide whether use database or DFS
+
+
+In memory FileSystem advantage
+    good to be used as cache (fast and reliable)
+
+
+HDFS Key features and assumptions
+    1. Scale up to 100+ PB of storage and a single cluster of several thousand servers
+       supporting close to a billion files and blocks
+    2. Designed to run on commodity hardware
+        
+
+
+Composition vs Inheritance
+we need to avoid to many levels of inheritance and shall consider using composition  
