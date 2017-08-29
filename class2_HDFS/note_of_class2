@@ -1,0 +1,19 @@
+datanode: for data storage
+          actually is a java running process
+
+	  do not recommend multiple datanodes running on one machine 
+          for this will slow down disk IO speed
+
+namenode: most essential
+          to avoid namenode crash
+               two namenode: 1. active namenode
+                             2. stand-by namenode
+          there is always only one namenode working
+          if active namenode crashed, stand-by namenode will
+          take over the job.
+
+Challenge of this architecture:
+1. sync of two namenode. data consistency
+    failure detection. 
+    guarantee data in both namenode is synchronized
+    recovery mechanism
