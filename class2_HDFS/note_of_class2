@@ -1,7 +1,14 @@
-datanode: for data storage
-          actually is a java running process
+NameNode(NN): manages file system's metadata (loaded into memory when NN is serving)
+    Metadata: data of data (access time, time stamp, property, authority...)
+              metadata size will grow with the growth of data
 
-	  do not recommend multiple datanodes running on one machine 
+DataNode(DN): stores the real data (persisted on disk)
+    Data: real data
+
+datanode(TB level): for data storage (1k datanodes normally on one hadoop cluster)
+          actually is a java running program
+
+          do not recommend multiple datanodes running on one machine
           for this will slow down disk IO speed
 
 namenode: most essential
@@ -12,8 +19,52 @@ namenode: most essential
           if active namenode crashed, stand-by namenode will
           take over the job.
 
+     example:
+            2K nodes (machines)
+                       2 ---> namenode
+              /|| .. |||||||||...\  (1998 datanodes)
+               rack1     rack2 ...
+
 Challenge of this architecture:
-1. sync of two namenode. data consistency
-    failure detection. 
+1.  synchronization of two namenode. data consistency
+    failure detection.
     guarantee data in both namenode is synchronized
-    recovery mechanism
+    recovery mechanism (crashed namenode recovers to stand-by namenode)
+
+
+
+
+How to serve as a File System?
+    In NameNode:
+        Files and directories are represented on the NameNode by inodes. INodes record attributes like permissions,
+        modification and access times, or namespace and disk space quotas.
+        Files/Directories organized as a tree:
+                                                /root
+        /usr                                   /hive                                           /tmp
+    /usr/foo   /usr/bar                    /hive/table     /hive/table2                       /tmp/testfile
+               /usr/bar/baz
+                (concrete data will be stored on datanode)
+
+    so NameNode should also know mapping between data and DataNode which stores it
+
+    But we cannot store real data in NN
+
+    The file content is split into Blocks(typically 128 MB if original data > 128MB), and each block is independently
+    replicated at multiple DataNodes. if file content is less than 128MB, say 512 KB, the size of block that stores it
+    is simply 512 KB as well
+
+    what is block?
+        block may be a fixed size buffer (like 512 kb or 128 mb) and in practice, it is simply a file
+    eg: /usr/file1/data/part01 (1GB):
+        |block 1 (128 MB)|block 2 (40 MB)|block 3 (128 MB)|block 4 (512 KB)|
+
+    If block size set too small, the block numbers will be quite huge  ===> mappings between content and block and DataNode
+    will be also huge
+    eg: /usr/bar/file1 is split to 1000000 blocks and stored in n DataNodes
+    the number of mappings is too big
+
+    Process of access file content by HDFS:
+        Say a client is trying to access a file on HDFS, he will first refer to NameNode and tell it the path of file
+        he needs, and NameNode will find the inode which stores this path(directory or file) based on path info. Then
+        NameNode will tell client which DataNode stores the file content. The client will give DataNode a block-id, and
+        DataNode will return block info which the client needs.
