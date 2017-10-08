@@ -179,3 +179,8 @@ How to serve as a File System?
             segment data into small packets is to
                 1. higher throughput  (not too small) -> trade-off
                 2. if one part has error, the effect would not be quite serious
+
+    Tips:
+         Different replicas of the same blocks share the same block-id
+
+         If a file is not too large(say < 128MB), it is unnecessary to be split into several blocks, directly replicated
