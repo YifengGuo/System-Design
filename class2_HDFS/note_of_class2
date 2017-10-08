@@ -105,7 +105,7 @@ How to serve as a File System?
             3 replicas by default
             more detailed: 1st replica on local node, local rack or random node
             2nd and 3rd replicas are on the same remote rack
-                (racks are physically remote)  ??????
+                (racks are physically remote)  similar to Chinese flower transformation
 
          Reliability: tolerate 2 failures (NameNode will also not let a single DN too busy)
          Good data locality (Usually stored in the same data center except those for disaster remote centers)
@@ -158,7 +158,7 @@ How to serve as a File System?
         contains blocks allocation(depending on client data size) info and replica info (response created and sent back to
         the client) and client tells the first DataNode and then 2nd to nth DN. Then from last DataNode feedback info
         to first DN to report feedback to NN that the file is distributed store in the file system (Block Received)
-        ????????DN?????DN(??????????Rack??DN)???????
+        Write process from the 1st DN to the last DN(on different Racks except 1st DN) similar to Chinese flower transformation
 
             optimization: when write.close(), client tells NN that content is really written xxx dd xxx blocks because
             if each DD reports storage info back to NN, NN is hard to handle all of them
