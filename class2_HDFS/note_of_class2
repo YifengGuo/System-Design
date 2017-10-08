@@ -184,3 +184,10 @@ How to serve as a File System?
          Different replicas of the same blocks share the same block-id
 
          If a file is not too large(say < 128MB), it is unnecessary to be split into several blocks, directly replicated
+
+         heart-beat happens very frequently but very slightly for NameNode(every 3 seconds)
+         but report from DataNode of the info of all the blocks(id, version) is not very slightly for NameNode
+
+         At the very beginning, DataNodes will report blocks info to NameNode to help NameNode initialize the mappings
+         (Block-id, List<DataNodes>)
+         But we have other design choice to get better performance or relieve NameNode pressure...
