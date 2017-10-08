@@ -5,31 +5,31 @@ NameNode(NN): manages file system's metadata (loaded into memory when NN is serv
 DataNode(DN): stores the real data (persisted on disk)
     Data: real data
 
-datanode(TB level): for data storage (1k datanodes normally on one hadoop cluster)
+DataNode(TB level): for data storage (1k DataNodes normally on one hadoop cluster)
           actually is a java running program
 
-          do not recommend multiple datanodes running on one machine
+          do not recommend multiple DataNodes running on one machine
           for this will slow down disk IO speed
 
-namenode: most essential
-          to avoid namenode crash
-               two namenode: 1. active namenode
-                             2. stand-by namenode
-          there is always only one namenode working
-          if active namenode crashed, stand-by namenode will
+NameNode: most essential
+          to avoid NameNode crash
+               two NameNode: 1. active NameNode
+                             2. stand-by NameNode
+          there is always only one NameNode working
+          if active NameNode crashed, stand-by NameNode will
           take over the job.
 
      example:
             2K nodes (machines)
-                       2 ---> namenode
-              /|| .. |||||||||...\  (1998 datanodes)
+                       2 ---> NameNode
+              /|| .. |||||||||...\  (1998 DataNodes)
                rack1     rack2 ...
 
 Challenge of this architecture:
-1.  synchronization of two namenode. data consistency
+1.  synchronization of two NameNode. data consistency
     failure detection.
-    guarantee data in both namenode is synchronized
-    recovery mechanism (crashed namenode recovers to stand-by namenode)
+    guarantee data in both NameNode is synchronized
+    recovery mechanism (crashed NameNode recovers to stand-by NameNode)
 
 
 
@@ -43,7 +43,7 @@ How to serve as a File System?
         /usr                                   /hive                                           /tmp
     /usr/foo   /usr/bar                    /hive/table     /hive/table2                       /tmp/testfile
                /usr/bar/baz
-                (concrete data will be stored on datanode)
+                (concrete data will be stored on DataNode)
 
     so NameNode should also know mapping between data and DataNode which stores it
 
@@ -63,7 +63,7 @@ How to serve as a File System?
     eg: /usr/bar/file1 is split to 1000000 blocks and stored in n DataNodes
     the number of mappings is too big
 
-    Process of access file content by HDFS:
+    1) Process of access file content by HDFS:
         Say a client is trying to access a file on HDFS, he will first refer to NameNode and tell it the path of file
         he needs, and NameNode will find the inode which stores this path(directory or file) based on path info. Then
         NameNode will tell client which DataNode stores the file content. The client will give DataNode a block-id, and
@@ -71,8 +71,8 @@ How to serve as a File System?
 
 
         Block Replication:
-            NameNode (Filename, numReplicas, block-ids,....)      inode info format
-            /usr/sameerp/data/part-0, r:2,{1,3},...
+            NameNode (Filename, numReplicas, block-ids,DataNode mapping...)      inode info format stored on NN
+            /usr/sameerp/data/part-0, r:2,{1,3},... Map<block-id, List<DataNode>>
             /usr/sameerp/data/part-1, r:3,{2,4,5},...
 
          DataNodes:
@@ -90,3 +90,92 @@ How to serve as a File System?
 
 
         How to locate blocks?
+            1. Map<Block, List<DataNode>>    HashMap
+            2. NN maps block to DN and keep updating the mapping to guarantee its correctness (dynamic track mapping info)
+               Track the location of new blocks
+            3. DN's health condition will affect mapping info, and NameNode will base on heart-beat protocol to monitor
+               health of DN.  (DN -> NN because number of DN is big which is complex and time-consuming reversely)
+               heart-beat contains info which DN wants NN to know and NN will base on this info to distribute tasks on DN
+               NN will feedback to DN with heart-beat response
+
+    2) How to achieve data durability
+        because disk can fail, DataNode can fail, Network can fail
+
+        Data replication:
+            3 replicas by default
+            more detailed: 1st replica on local node, local rack or random node
+            2nd and 3rd replicas are on the same remote rack
+                (racks are physically remote)  ??????
+
+         Reliability: tolerate 2 failures (NameNode will also not let a single DN too busy)
+         Good data locality (Usually stored in the same data center except those for disaster remote centers)
+         Fast block recovery
+
+         A client may access the sever of a DataNode, and write data into this DataNode, so the first
+         replica will be stored in this DataNode, and based on this first replica, the second and third
+         and ...nth replica will be replicated on 2nd, 3rd...remote Rack. Or the other 2 or several replicas
+         on the 2nd remote Rack which is more efficient due to the limit of web bandwidth.
+
+         The NameNode actively monitors the number of replicas of each block. When a replica of a
+         block is lost due to a DataNode failure or disk failure, the NameNode creates another replica
+         of the block
+
+
+    3) Read protocol
+        request (contains path of file) to NameNode
+        NameNode returns List<Entry<block, List<DN>>>
+
+        Client will read data from DN directly after getting the info of address
+        but NN response will have some info that tells client which DN is suitable
+        to read first
+
+        Read APIs:
+            FSDataInputStream open(Path f)     ===> Client sent request to NN, get response and open the file
+            FSDataInputStream#seek(long)       move current pointer to somewhere by xxx offset
+            FSDataInputStream#read(byte[]buffer, ...)
+            FSDataInputStream#read(long position, byte[]buffer)  position read, read starting from xxx position
+                                                                 so if position > 1st block.size(), it can ignore
+                                                                 and not return first block to client
+
+
+    4) Write protocol
+        API: FSDataOutputStream create(Path fileName,...)
+        e.g:
+            FileSystem fs = new DistributedFileSystem(...);
+            FSDataOutputStream out = fs.create(new Path("/foo"), ...)
+            try {
+                out.write(1);
+            } finally {
+                out.close();
+            }
+
+
+        Client sent create path info to NN and NN will create an inode file for this file path
+            (At this moment, NN does not have to consider space quota, block initialization... for client
+             did not write anything)
+
+        After Client invoke Output.write("xxx"), NameNode will begin to allocate space and make response which
+        contains blocks allocation(depending on client data size) info and replica info (response created and sent back to
+        the client) and client tells the first DataNode and then 2nd to nth DN. Then from last DataNode feedback info
+        to first DN to report feedback to NN that the file is distributed store in the file system (Block Received)
+        ????????DN?????DN(??????????Rack??DN)???????
+
+            optimization: when write.close(), client tells NN that content is really written xxx dd xxx blocks because
+            if each DD reports storage info back to NN, NN is hard to handle all of them
+
+        Pipeline:
+            1) Client does not need to wait for ack for previous packets before sending out the next packet
+            2) Motivation: higher throughput
+            3) Need an upper limit for the total number of outstanding packets
+            4) Flush: wait for the acks for all the previous packets
+
+            IMPORTANT!
+            Throughput <===> Latency
+                can image like a water pipe to transform certain volume of water, throughput is like the sectional area
+                of pipe while the latency is like the length of pipe
+            latency = ack time - send time
+            throughput = total bytes / total time
+
+            segment data into small packets is to
+                1. higher throughput  (not too small) -> trade-off
+                2. if one part has error, the effect would not be quite serious
