@@ -113,8 +113,9 @@ How to serve as a File System?
 
          A client may access the sever of a DataNode, and write data into this DataNode, so the first
          replica will be stored in this DataNode, and based on this first replica, the second and third
-         and ...nth replica will be replicated on 2nd, 3rd...remote Rack. Or the other 2 or several replicas
-         on the 2nd remote Rack which is more efficient due to the limit of web bandwidth.
+         and ...nth replica will be replicated on 2nd, 3rd...remote Rack (checksum will happen during transmission).
+         Or the other 2 or several replicas on the 2nd remote Rack which is more efficient due to the limit of web
+         bandwidth.
 
          The NameNode actively monitors the number of replicas of each block. When a replica of a
          block is lost due to a DataNode failure or disk failure, the NameNode creates another replica
@@ -159,6 +160,7 @@ How to serve as a File System?
         the client) and client tells the first DataNode and then 2nd to nth DN. Then from last DataNode feedback info
         to first DN to report feedback to NN that the file is distributed store in the file system (Block Received)
         Write process from the 1st DN to the last DN(on different Racks except 1st DN) similar to Chinese flower transformation
+        (checksum will happen during the transmission process)
 
             optimization: when write.close(), client tells NN that content is really written xxx dd xxx blocks because
             if each DD reports storage info back to NN, NN is hard to handle all of them
@@ -191,3 +193,58 @@ How to serve as a File System?
          At the very beginning, DataNodes will report blocks info to NameNode to help NameNode initialize the mappings
          (Block-id, List<DataNodes>)
          But we have other design choice to get better performance or relieve NameNode pressure...
+
+
+    Unsolved Potential Problems:
+        Failure handle (hardware(commodity) may be crashed)
+            1. I/O (DN to disk)
+            2. ack lost
+            3. DN offline and info transmission pipeline will be blocked by this offline DN
+            4. Wrong Data transmission (Replica Consistency)
+
+            Solution for i/o or fail to get/transmit data: ack matters
+            (cannot write on some DN)
+            notice the pic shows whenever DD gets data, it will send back an ack back to previous DN
+            and protocol has regulated a timeout period if DN has not received ack for this amount of time.
+            The error message will be sent to previous nodes and higher level and finally to NN
+                (can write but may not be consistent data)
+                Usually use 'checksum' (MD5) to detect if the data is consistent (compare calculated result of your data
+                and online data, to check if they are consistent)
+                bash terminal : md5sum + file_name   ---> get the md5sum of the file
+                Usually when calculating md5sum, we will cut a big file into several blocks and calculate md5sum for
+                each block respectively. (In HDFS, checksum block-size == 512KB, md5 result is 4 bytes)
+                    The advantages are: 1. if error happened, it is hard to locate error in a big file while is easy
+                                           to find among several blocks, so we can directly amend that error block
+                                        2. locate error earlier can save much time, avoid to meet the situation where
+                                           all files downloaded but cannot run for some reason
+
+            Another case: Data is not consistent within all replicas but ack did not send error
+                          For example, when some DN meets a full GC which lasts over 10 minutes.
+                          During the GC, everything is stopped, and after that, we say, this node
+                          didn't get full data because of gc, and after that, it also didn't realized that.
+                          So how to control data consistency here?
+                            One of solution is to append version ID for each block (Generation Stamp in HDFS)
+        Write & Read in high concurrent conditions
+
+Summary:
+    1.Assumption: commodity hardware, components can fail.
+    2. How to distribute data
+        a. Metadata v.s. Real data
+        b. Files v.s. Blocks (why dividing files into blocks)
+            The benefits with HDFS block are:
+            i. The blocks are of fixed size, so it is very easy to calculate the number of blocks that can be stored on a disk.
+            ii. HDFS block concept simplifies the storage of the datanodes. The datanodes don't need to concern about
+                the blocks metadata data like file permissions etc. The namenode maintains the metadata of all the blocks.
+            iii. If the size of the file is less than the HDFS block size, then the file does not occupy the complete block storage.
+            iv. As the file is segmented into blocks, it is easy to store a file that is larger than the disk size as the
+                data blocks are distributed and stored on multiple nodes in a hadoop cluster.
+            v. Blocks are easy to replicate between the datanodes and thus provide fault tolerance and high availability.
+               Hadoop framework replicates each block across multiple nodes (default replication factor is 3).
+               In case of any node failure or block corruption, the same block can be read from another node.
+        c. Heartbeat protocol
+    3. Data durability: block replication
+        a. Basic Read/Write protocols
+        b. Write
+            i. Throughput v.s. Latency
+            ii. Replica consistency
+            iii. Checksum
