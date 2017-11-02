@@ -1,0 +1,79 @@
+Computation:
+    1. Batch processing:
+        a. eg: log analysis, web page analysis
+        b. Processing all stored data, which may be of large scale
+        c. New information arriving in the meantime is not processed
+
+    2. Stream processing:
+        a. Continuously receives data that is under constant change
+        b. eg: Real-time monitoring: capture and analyze data issued by various sources
+           such as sensors, new feeds, click on Web pages, etc.
+
+    A classical Batch Processing model: MapReduce
+    MapReduce is a programming model and an associated implementation for processing and generating large data sets with
+    a parallel, distributed algorithm on a cluster
+
+    Example: Word count
+    given a text file, each word is separated by space
+    how to count occurrence of a certain word
+
+        if text file is not big, use HashMap or sorting
+
+        challenge: 1. the text file is so large
+                   2. the target words are in a certain range
+                   3. what if the word has no border, e.g: just a string sequence, not a valid word
+
+        intuitive idea: counting in parallel
+                        apply more machines: more computation resources and memories
+        details:
+                1. how to distribute tasks?
+                    intuitively uniformly distribute (hash, a reducer will handle words  from different mappers
+                    with same hashcode)
+                2.
+
+    Map:
+        Apple Mango Plum Orange Apple Plum Apple
+
+        Apple Mango | Plum Orange | ...
+
+        Process M1  |     M2      | ...
+        each part(boundary) is a block in HDFS (avoid a mapper after processing 128mb data still need to access data
+        on another DN)
+
+        M1 : Apple 1  Mango 1
+        M2 : Plum 1  Orange 1
+        M3 : Apple 1  plum 1
+
+    Reduce:
+        Merge in pairs or K way merge
+            bottleneck: no matter merge in pairs or k way merge, finally we need to store result in one machine, and
+            degree of parallel computing process will be lower and lower.
+
+
+        A better idea: MapReduce
+            Map -> Shuffle -> Reduce
+            1. Recall the structure in HashMap. Can we somehow map the same word from each machine into same process to
+            count, (this is called sort and shuffle in HDFS, mappers give out(shuffle) word to corresponding reducer
+            which is to handle that certain word, then reducer will sort and reduce the same words in it and summarize)
+            2. And finally process and summarize results of each process and store as one result (Reduce)
+            3. The result is also stored in this distributed file system
+               for example, apple is stored in part1, plum is stored in part2... and all of them are in a file
+
+            A DN can actually run several processes, which means multiple MapReduce processes can run on the same DN
+
+
+
+
+Data Locality:
+    Apple Mango | Plum Orange | ...
+
+    Process M1  |     M2      | ...
+    we know data is on DFS already and we know Mapper and Reducer processes are also run and save result in DFS
+    so why not run new Mapper processes on the DN which is exactly the data is on! So we can just need transmit data
+    from Mappers to Reducers
+    This strategy will save so much time and resource for data transmission is quite costly
+
+    Summary of Data Locality:
+        1. Ask HDFS/GFS for locations of replicas of input file blocks
+        2. Map tasks typically split into FS block size
+        3. Map tasks scheduled so HDFS/GFS input block replica are on same machine or same rack
