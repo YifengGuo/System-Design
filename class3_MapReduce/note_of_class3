@@ -51,7 +51,7 @@ Computation:
 
 
         A better idea: MapReduce
-            Map -> Shuffle -> Reduce
+            Map -> Shuffle(Hash Partition) -> Reduce
             1. Recall the structure in HashMap. Can we somehow map the same word from each machine into same process to
             count, (this is called sort and shuffle in HDFS, mappers give out(shuffle) word to corresponding reducer
             which is to handle that certain word, then reducer will sort and reduce the same words in it and summarize)
