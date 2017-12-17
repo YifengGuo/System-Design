@@ -1,0 +1,92 @@
+Terasort:
+    example: how to quickly sort 1TB data?
+        Solution 1 : merge sort: distribute data into several datanodes and do the sorting
+                     then do the merge sort at last
+            bottleneck: In the end we need a single reducer to process all the data
+                        so all the distributed strategy before seemed to be meaningless
+
+
+        Solution 2: Map-Shuffle(range partition)-Reduce
+            1) During mapping phrase, the data for each mapper will be partitioned into R data blocks
+               (R == count of reduce task) and data in the i-th data block is smaller than any data in the (i + 1)-th
+               data block
+                    a simple partition strategy is to partition by the first character if the data is string array or
+                    byte array
+                    (be careful: data in each partition has not been sorted during this phrase)
+
+            2) Do sorting respectively on each mapper  ----Shuffle based on partition
+               In this phrase, the mapper will determine which data block (partition range) each data should be stored
+
+            3) During reduce phrase, do the sorting on each reduce task the i-th reduce task will handle all i-th
+               data blocks from every map task, in this way, the result of i-th reduce task will be smaller than the
+               i+1-th reduce task
+
+            4) Output the sorted result of reduce tasks from ith to Rth, which is the final result
+               In HADOOP, the result will be stored in a directory .../.../.../job_id, and they are in
+               several files (each reduce task -> each file )
+
+
+                Q1: How to determine the range of R data blocks of each map task
+                     1. random samplings example: b, abc, abd, bcd, abcd, efg, hii, afd, rrr, mnk
+                     2. sort the samplings: abc, abcd, abd, afd, b, bcd, efg, hii, mnk, rrr
+                                            and if we assume the count of reduce is 4
+                     3. determine the partition by the number of reduce tasks
+                                            the partition point should be abd, bcd, mnk to divide the data into
+                                            4 parts
+                      eg: if we have 32 reduce tasks, then we have to determine 31 partition points
+
+
+                Q2: How to determine which data block the given data belongs to efficiently? (occur in each mapper)
+                    Each data is a string, so we apply n-layer trie (prefix tree)
+                    Time = log(# of partitions)
+                    The advantage of trie is we can cut off redundant long prefix of string, as long as we can simply
+                    and efficiently represent the partition rule in the trie.
+                    (number of partition points determines the nodes on each layer in first several layers)
+                    In detail, in which certain layer, can we determine the different range the given data belongs to.
+
+
+         2-Sum: if data space is quite large, we can apply MapReduce to find 2-sum
+
+
+
+
+
+Distributed Database
+    Motivation:
+    1) larger storage
+    2) more r/w access points: clients can access the database through more than one machines
+
+    Challenge:
+    1) How to locate the data
+    2) Data consistency, availability, and how to handle message loss or partial system failure ?
+        consistency in read and write (latency between updated (write) and later read)
+        even replica for complex state machine
+    3) Transaction in distributed environment
+
+
+    Category:
+        1. Relational : MySQL, Oracle, Postgres
+        2. NoSQL, MongoDB
+        3. Wide Column: Bigtable, HBase, Cassandra
+        4. Graph DB
+
+
+    Sharding
+        Horizontal sharding
+
+        example: how to shard UberEats user/restaurant information
+             sharding by location    like one machine stores one sharding
+             sharding rule should try to best cover as much as info (data locality)
+
+
+    Distributed hash table:
+        data distributed in different locations
+
+        Consistent Hashing:
+            to solve when table size meets load factor, the hash table will be resized, and the number of buckets will
+            change, so the hashCode of each bucket will change.
+
+            In practice, the DHT will resize not only when the size meets load factor, but also happen when the machine
+            crashed, update or maintain
+
+            So we try the best to affect(relocate) as less data as possible when resizing
