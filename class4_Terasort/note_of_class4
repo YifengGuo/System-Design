@@ -21,6 +21,9 @@ Terasort:
                data blocks from every map task, in this way, the result of i-th reduce task will be smaller than the
                i+1-th reduce task
 
+                the reduce tasks do not have to wait and start to work until all the jobs finished by mappers
+                it is like a pipeline in practice
+
             4) Output the sorted result of reduce tasks from ith to Rth, which is the final result
                In HADOOP, the result will be stored in a directory .../.../.../job_id, and they are in
                several files (each reduce task -> each file )
