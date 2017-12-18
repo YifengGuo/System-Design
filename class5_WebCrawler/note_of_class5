@@ -1,0 +1,184 @@
+How to describe the idea of system design?
+    example: I would like to model the problem in ...
+             And the algorithm for this model would be ...
+
+
+Differences between Database and FileSystem:
+    1. data model:
+        file system: tree like structure
+        db: key-value pair. document ...
+    2. offered API
+
+    be careful: both db and fs can use in-memory or local disk space!!!
+
+    Web Crawler:
+        1. Graph traversal model
+                algorithm: bfs, dfs
+                follow ups: multiple threading(high concurrency)
+                            producer and consumer model
+
+        2. vertices: web pages(url)
+           edges: links
+
+        3. Apply a queue machine to process urls (url1, url2, url3...)
+
+
+        if we need to download all(large amount of) the urls from the internet:
+            1. network bandwidth
+            2. computation capabilities for parsing
+            3. locally store visited information for all web pages need a lot of space
+
+         So we need to think designing distributed computation or system
+
+
+now we have a huge amount of downloaded urls, the essential step here is how to partition and de-duplicate the urls into
+different parts and distribute them into different tasks
+    ------- Hash Partition: calculate url's hashCode and determine which machine (crawler) it goes to
+                        In this way, the new downloaded urls will be sent to their corresponding machine to do the
+                        following work
+
+
+Design a URL shortener service
+    take a long url and return a shorter one
+
+example:
+https://docs.google.com/document/d/1t1atIyyE-9U2u72XzP3C8bleB0s0T7kEAY1Cc5zQRgg/edit?ts=591a9b51#heading=h.xwyw8nw08hq0
+to
+http://tinyurl.com/m5Tqlzt
+
+m5Tqlzt is like a response sent by this service, and the long url is like a request sent by user
+
+then the long url is mapped to m5Tqlzt (the url in the front is identical for each shortened one)
+and take m5Tqlzt as input, the service can guarantee parse the input and redirect to the long url
+
+HashMap<key: m5Tqlzt, value: long url>
+
+step 1: Use cases and constraints
+step 2: Abstract / Basic design
+step 3: Understanding bottlenecks
+step 4: Scaling / Improving the abstract design
+
+    without thinking or consideration on basic design, do not try to consider improvement or scalability at
+    very beginning
+
+Step 1: Use cases and constraints
+    1. read pattern
+        a. put the short url back into the system, you can retrieve the original long URL
+    2. write pattern
+        a. given a long url to the service, the service will store it in the system, and return a corresponding
+           short URL as response
+
+    3. Use case / Constraints (constraints are for use cases)
+        a. eg. there are a lot more reads than writes for the same url pair.
+            read:write ratio is heavily biased towards read
+        b. additional common constraints:
+            i. traffic pattern: read is much more than write, so we probably need to optimize for read
+            ii. data size
+                1). 1 million access User, 1% writes and 99& reads
+                2). 1 billion MAU(monthly active user), 10% of those people use it to write, 100M URLs * 12months
+                    is 1.2 billion urls, 2k * 1.2B = 2TB
+                3). what does it mean?
+                    a. on disk it is probably ok
+                    b. in memory you cannot put it on the same machine
+                4). how much traffic can the system handle if everything is stored on disk
+                    a. latency and speed of common media (memory, network, disk)
+                    b. 50k/s QPS (query per second) is ok but might not handle peak load at large scale
+            iii. computational cost
+                    SHA, MD5 hashing algoithm complexity
+
+            iv: network bandwidth
+
+Step 2: Abstract / Basic design
+    1. basic: hash_map: key: shorter url, value: long url   (get, put api)
+    2. how to generate key(short url) given long url: simply Hex string
+        basic goal: short and unique(low collision)
+        long URL => Integer(hash value or sequence num maybe 256 bits) => short string (x bits) x should be small
+            sequence num / big integer => short string
+              1) BaseXX encoding
+                a) hex: 0-9, a-f
+                b) Base62 [a-zA-Z0-9]
+
+              2) how many chars? [a-zA-Z0-9]
+                a) assume there are total 1 billion urls
+                b) 100x value space to avoid collision: log_62(100 * billion) = how many chars do we need to store each
+                   short url (each bit we have 62 choices)  62 ^ x = total urls, x == bit count
+    3. If collision does happen, we can use open addressing strategy to re-choose available place
+
+
+Step 3: Understanding bottlenecks (bottlenecks are for system design / implementation)
+    Before any improvement, first need to identify the bottleneck:
+        1. there are a lot of reads
+        2. dataset size is not small
+        3. read from spinning disk might be slow (only assumption, things will be different in SSD)
+            a. 50 MB/s continuously
+            b. <10MB/s random access, several milliseconds per disk seek
+            c. our system need 100 byte * 1 million QPS = 100 MB / s, which cannot handle by single machine
+        4. we need to store hash tables in multiple machines
+
+Step 4: solve the bottleneck, scale the basic design:
+    Basic directions to improve the simple design:
+        a. Efficiency - can things be paralleled, cached, etc
+        b. Reliability - what if things fail
+        c. Scalability - larger datasets or user base, more requests etc.
+        d. Explain trade-offs
+
+    1. ways to spread the data onto multiple machines
+        a. sharding - split your data into partitions/shards, and each machine takes one/more partitions
+        b. replication - make multiple identical copies of your data on a lot of machines
+            i. need to maintain replica consistency in practice
+        c. sharding + replication
+
+
+
+
+SUMMARY ON SYSTEM DESIGN:
+    1. System overview - start with simple design, but with full functionality
+        a. What functionality the system provides?   (use cases)
+        b. Requests / Response (what is input and what is output)
+        c. What information / data should be stored in the system? (database schema)
+        d. Data model (data structure)
+        e. How is the data / information queried / updated?
+
+    2. Possible bottlenecks of the simple design:
+        a. Efficiency - can things be paralleled, cached, etc
+        b. Reliability - what if things fail
+        c. Scalability - larger datasets or user base, more requests etc.
+        d. Explain trade-offs
+
+    Collect common patterns
+        1. Typical way to dispatch job to multiple workers:
+            a. MapReduce: Word Count(hash partition), TeraSort(range partition)
+               Distributed WebCrawler
+            b. Batching - group things together
+
+        2. Hashtable, DHT
+
+        3. Push / Pull model
+
+        4. Typical way to handle failures
+            a. server failover - master / slave   (like NameNode and its stand by NameNode)
+            b. Data durability - replication
+
+        5. Caching:
+            a. Benefits
+            b. Different types of cache
+                1) Write through: directs write I/O onto cache and through to underlying permanent storage before
+                   confirming I/O completion to the host
+                2) Write around: write I/O is written directly to permanent storage, bypassing the cache. Then load into
+                   cache when hit a cache miss.
+                3) Write back: write I/O us directly to cache and completion is immediately confirmed to the host
+
+        6. Database
+            a. Understand basic database concepts
+            2. ACID semantics
+            c. Sharding
+
+        7. Knowing general system numbers
+            a. in general: network >> disk >> in-memory >> in-L2-cache >> in-L1-cache
+
+        8. Synchronous / Asynchronous call
+            a. Synchronous call: wait until response comes back
+            b. Asynchronous call:
+                1) make the call (eg. send the request)
+                2) Do something else
+                3) Handle message when result / response comes back
